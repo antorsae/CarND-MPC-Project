@@ -3,6 +3,103 @@ Self-Driving Car Engineer Nanodegree Program
 
 ---
 
+## The Model
+
+The MPC model is as follows:
+
+### State
+
+Our car is simplitically modeled with the following state:
+
+state = {x, y, ψ, v}
+
+The model update equations from t to t+1 are as follows:
+
+x<sub>​t+1</sub> = x<sub>t</sub> + v<sub>t</sub> cos(ψ<sub>t</sub>) Δt
+
+y<sub>​t+1</sub> = y<sub>t</sub> + v<sub>t</sub> sin(ψ<sub>t</sub>) Δt
+
+ψ<sub>​t+1</sub> = ψ<sub>t</sub> + v<sub>t</sub> δ<sub>t</sub> Δt / L<sub>f</sub>
+
+v<sub>​t+1</sub> = v<sub>t</sub> + α<sub>t</sub> Δt
+
+### Actuators
+
+actuators = {δ, α}
+
+Where δ (`delta` in the code) is steering actuation and α is the acceleration actuation (throttle).
+
+### Predicting actuators to optimize the trajectory
+
+As opposed to the PID project, our MPC model is much more flexible in predicting actuators for at least these reasons:
+- Looks in the future beyond 1 timestep to make predictions.
+- Has a flexible loss function where we can dinamically tune which criteria is more important to minimize.
+- Can handle delay
+
+These benefits comes at a higher computational cost compared to the PID model, but the results are worth it.
+
+To predicting the best δ and α we first need to add two components to our model state:
+
+cte = cross-track error
+
+eψ = ψ angle error
+
+cte<sub>​t+1</sub> = cte<sub>t</sub> + v<sub>t</sub> sin(eψ<sub>t</sub>) Δt
+
+eψ<sub>​t+1</sub> = eψ<sub>t</sub> + v<sub>t</sub> δ<sub>t</sub> Δt / L<sub>f</sub>
+
+state = {x, y, ψ, v, cte, eψ}
+
+### Loss function and polynomial fitting
+
+With all of the above, we are ready to minimize the following function:
+
+f(cte, eψ, v, δ, α) = w<sub>cte</sub> cte<sup>2</sup> + w<sub>eψ</sub> eψ<sup>2</sup> + w<sub>v</sub> (v-v<sub>ref</sub>)<sup>2</sup> + w<sub>δ</sub> δ<sup>2</sup> + w<sub>α</sub> α<sup>2</sup> + w<sub>Δδ</sub> Δδ<sup>2</sup> + w<sub>Δα</sub> Δα<sup>2</sup>
+
+subject to the following constraints:
+
+0 ≤ g<sub>1</sub>(state, actuators) = x<sub>​t+1</sub> - x<sub>t</sub> + v<sub>t</sub> cos(ψ<sub>t</sub>) Δt ≤ 0
+
+0 ≤ g<sub>2</sub>(state, actuators) = y<sub>​t+1</sub> - y<sub>t</sub> + v<sub>t</sub> sin(ψ<sub>t</sub>) Δt ≤ 0
+
+0 ≤ g<sub>3</sub>(state, actuators) = ψ<sub>​t+1</sub> - ψ<sub>t</sub> + v<sub>t</sub> δ<sub>t</sub> Δt / L<sub>f</sub> ≤ 0
+
+0 ≤ g<sub>4</sub>(state, actuators) = v<sub>​t+1</sub> - v<sub>t</sub> + α<sub>t</sub> Δt ≤ 0
+
+0 ≤ g<sub>5</sub>(state, actuators) = cte<sub>​t+1</sub> - cte<sub>t</sub> + v<sub>t</sub> sin(eψ<sub>t</sub>) Δt ≤ 0
+
+0 ≤ g<sub>6</sub>(state, actuators) = eψ<sub>​t+1</sub> - eψ<sub>t</sub> + v<sub>t</sub> δ<sub>t</sub> Δt / L<sub>f</sub> ≤ 0
+
+-25<sup>o</sup> ≤ **g<sub>7</sub>(state, actuators)** = δ ≤ 25<sup>o</sup>
+
+-1.0 ≤ g<sub>8</sub>(state, actuators) = α ≤ 1.0
+
+We have at lof of flexibility in how we balance each term of the loss function. To make things simple, at the target speed (v<sub>ref) at which I tested the code, I only used w<sub>Δδ</sub> with a value of 200, the rest of the weights were set to 1.
+
+## Timestep Length and Elapsed Duration (N & dt)
+
+The MPC will attempt to fit a given trajectory by looking `N` points ahead spaced by `dt` seconds. The product `N * dt` is how many seconds we want to look ahead to fit our trajectory to the predicted trajectory in that time horizon. Because we are fitting the target trajectory in the time horizon with low degree polynomials, it doesn't make sense to predict too far in the future (because we would be fitting a complex curve with a low degree polynomial). In addition, we are updating our actuators very frequently so we are not too concerned with that happens in the far future. I set `1` second as the time horizon, I also tested it with `0.5` seconds and worked OK. With `1.5` and `2` seconds it failed to match the predicted trajectory, it could be that the actual computational cost adds further latency (which I did not take into account) or the more complex trajectory doesn't fit nicely in a low-degree poly. After a few tests, I decided to use `0.1` as `dt` because it was a multiple of our target latency (details later).
+
+## MPC Preprocessing
+
+I transformed the coordinates returned by the simulator into our car (ego) frame for easier computation.
+
+## Latency
+
+Since we are predicting a set of actuations for each point in our time horizon, I made the assumption that the actual MPC computational cost was zero and just took the closest actuation predicted by our MPC model at time `latency`, the code is straightfoward:
+
+```
+  / yield actuations offseted by latency.
+  // works OK when latency is multiple of dt, would need to re-eval
+  // poly otherwise
+  size_t latency_offset = unsigned(latency / (1000* dt));
+  
+  assert(latency_offset < N);
+  
+  actuations.push_back(solution.x[delta_start + latency_offset]);
+  actuations.push_back(solution.x[a_start     + latency_offset]);
+```
+
 ## Dependencies
 
 * cmake >= 3.5
