@@ -9,7 +9,7 @@ The MPC model is as follows:
 
 ### State
 
-Our car is simplitically modeled with the following state:
+Our car is simplistically modeled with the following state:
 
 state = {x, y, ψ, v}
 
@@ -38,7 +38,7 @@ As opposed to the PID project, our MPC model is much more flexible in predicting
 
 These benefits comes at a higher computational cost compared to the PID model, but the results are worth it.
 
-To predicting the best δ and α we first need to add two components to our model state:
+To predict the best δ and α we first need to add two components to our model state:
 
 cte = cross-track error
 
@@ -74,11 +74,17 @@ subject to the following constraints:
 
 -1.0 ≤ g<sub>8</sub>(state, actuators) = α ≤ 1.0
 
-We have at lof of flexibility in how we balance each term of the loss function. To make things simple, at the target speed (v<sub>ref) at which I tested the code, I only used w<sub>Δδ</sub> with a value of 200, the rest of the weights were set to 1.
+We have at lof of flexibility in how we balance each term of the loss function. To make things simple, at the target speed (v<sub>ref</sub>) at which I tested the code, I only used w<sub>Δδ</sub> with a value of 200, the rest of the weights were set to 1.
 
 ## Timestep Length and Elapsed Duration (N & dt)
 
-The MPC will attempt to fit a given trajectory by looking `N` points ahead spaced by `dt` seconds. The product `N * dt` is how many seconds we want to look ahead to fit our trajectory to the predicted trajectory in that time horizon. Because we are fitting the target trajectory in the time horizon with low degree polynomials, it doesn't make sense to predict too far in the future (because we would be fitting a complex curve with a low degree polynomial). In addition, we are updating our actuators very frequently so we are not too concerned with that happens in the far future. I set `1` second as the time horizon, I also tested it with `0.5` seconds and worked OK. With `1.5` and `2` seconds it failed to match the predicted trajectory, it could be that the actual computational cost adds further latency (which I did not take into account) or the more complex trajectory doesn't fit nicely in a low-degree poly. After a few tests, I decided to use `0.1` as `dt` because it was a multiple of our target latency (details later).
+The MPC will attempt to fit a given trajectory by looking `N` points ahead spaced by `dt` seconds. 
+
+The product `N * dt` is how many seconds we want to look ahead to fit our trajectory to the predicted trajectory in that time horizon. 
+
+Because we are fitting the target trajectory in the time horizon with low degree polynomials, it doesn't make sense to predict too far in the future (because we would be fitting a complex curve with a low degree polynomial). In addition, we are updating our actuators very frequently so we are not too concerned with that happens in the far future. 
+
+I set `1` second as the time horizon, I also tested it with `0.5` seconds and worked OK. With `1.5` and `2` seconds it failed to match the predicted trajectory, it could be that the actual computational cost adds further latency (which I did not take into account) or the more complex trajectory doesn't fit nicely in a low-degree poly. After a few tests, I decided to use `0.1` as `dt` because it was a multiple of our target latency (details later). `N` controls the number of points to sample, higher `N` results in higher resolution, and lower `N` less resolution; because our curves are not too complex (e.g. in the target time horizon we only see one curve at most), a value of `10` works fine, and is a good tradeoff between computational complexity and resolution.
 
 ## MPC Preprocessing
 
@@ -99,6 +105,8 @@ Since we are predicting a set of actuations for each point in our time horizon, 
   actuations.push_back(solution.x[delta_start + latency_offset]);
   actuations.push_back(solution.x[a_start     + latency_offset]);
 ```
+
+A better solution would have been to measure the actual computation time, and re-eval (or interpolate) the best actuations accounting for it.
 
 ## Dependencies
 
