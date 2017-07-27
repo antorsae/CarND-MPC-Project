@@ -100,7 +100,7 @@ Since we are predicting a set of actuations for each point in our time horizon, 
   // poly otherwise
   size_t latency_offset = unsigned(latency / (1000* dt));
   
-  assert(latency_offset < N);
+  assert(latency_offset < (N-1));
   
   actuations.push_back(solution.x[delta_start + latency_offset]);
   actuations.push_back(solution.x[a_start     + latency_offset]);
